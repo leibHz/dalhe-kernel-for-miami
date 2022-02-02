@@ -136,7 +136,7 @@ struct aw_cali_desc {
 int aw_cali_init(struct aw_cali_desc *cali_desc);
 void aw_cali_deinit(struct aw_cali_desc *cali_desc);
 int aw_cali_svc_get_cali_status(void);
-int aw_cali_read_re_from_nvram(int32_t *cali_re, int32_t ch_index);
+int aw_cali_read_re_from_nvram(struct aw_device *aw_dev, int32_t *cali_re, int32_t ch_index);
 
 
 #endif

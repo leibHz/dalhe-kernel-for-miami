@@ -77,6 +77,8 @@
 		fp-gpio-reset = <&tlmm 18 0x00>;
 		fp-gpio-irq = <&tlmm 17  0x00>;
 		fp-gpio-ven = <&tlmm 11  0x00>;
+		panel = <&dsi_txd_nt36528_656_hd_plus_120_video
+			&dsi_boe_ili9883c_656_hd_plus_120_video>;
 		interrupt-parent = <&tlmm>;
 		interrupts = <17 0>;
 		interrupt-controller;

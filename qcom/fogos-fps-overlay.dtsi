@@ -87,6 +87,8 @@
 		rgltr-ctrl-support;
 		fp,vdd-supply=<&L21A>;
 		fp,voltage-range = <3000000 3000000>;
+		panel = <&dsi_icnl9916c_hd_plus_120_video
+			&dsi_ili9883c_hd_plus_120_video>;
 		interrupt-parent = <&tlmm>;
 		interrupts = <17 0>;
 		interrupt-controller;

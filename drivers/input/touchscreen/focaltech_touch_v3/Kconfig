@@ -72,3 +72,11 @@ config FTS_LAST_TIME
 	help
 	  Say Y here to enable last time functionality on Focaltech V3 touch panel.
 	  If unsure, say N.
+
+config FTS_INPUT_ID
+	bool "Enable input ID"
+	depends on TOUCHSCREEN_FTS_V3
+	default n
+	help
+	  Say Y here to enable input ID functionality on Focaltech V3 touch panel.
+	  If unsure, say N.

@@ -9,6 +9,7 @@
 	#include "qg-batterydata-qf50-atl-SB18D96854-5000mah.dtsi"
 	#include "qg-batterydata-qf50-scud-5000mah.dtsi"
 	#include "qg-batterydata-qf50-swd-5000mah.dtsi"
+	#include "qg-batterydata-qf50-scud2-5000mah.dtsi"
 };
 
 &pm7250b_charger {

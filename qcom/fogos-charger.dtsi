@@ -12,6 +12,10 @@
 	#include "qg-batterydata-qf50-scud2-5000mah.dtsi"
 };
 
+&socd_trip {
+       temperature = <98>;
+};
+
 &pm7250b_charger {
 	#io-channel-cells = <1>;
 	io-channels = <&pm7250b_vadc ADC5_USB_IN_V_16>,

@@ -10,6 +10,7 @@
 	#include "qg-batterydata-qf50-scud-5000mah.dtsi"
 	#include "qg-batterydata-qf50-swd-5000mah.dtsi"
 	#include "qg-batterydata-qf50-scud2-5000mah.dtsi"
+	#include "qg-batterydata-qf50-swd-SB18E53186-5000mah.dtsi"
 };
 
 &socd_trip {

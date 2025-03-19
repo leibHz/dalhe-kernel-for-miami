@@ -4555,12 +4555,13 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	}
 
 	sdhci_msm_set_caps(msm_host);
+	msm_host->mmc->caps2 |= MMC_CAP2_MAX_DISCARD_SIZE;
 
 #if defined(CONFIG_SDC_QTI)
 	host->timeout_clk_div = 4;
 	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
 #endif
-	msm_host->mmc->caps2 |= MMC_CAP2_MAX_DISCARD_SIZE;
+
 	sdhci_msm_setup_pm(pdev, msm_host);
 
 	host->mmc_host_ops.execute_tuning = sdhci_msm_execute_tuning;

@@ -3113,24 +3113,19 @@ char *copy_mount_string(const void __user *data)
  * adb shell mount -r -w sdcard /system_ext
  * adb shell mount -r -w sdcard /product
  * adb shell mount -r -w sdcard /vendor
- * adb shell mount -r -w /dev/block/vold/public:179,1 /system
- * adb shell mount -r -w /dev/block/vold/public:179,1 /system_ext
- * adb shell mount -r -w /dev/block/vold/public:179,1 /product
- * adb shell mount -r -w /dev/block/vold/public:179,1 /vendor
 */
 static bool mount_block_check(unsigned long flags, struct path *path)
 {
 	int i;
-	char *buf, *pathname;
-	u32 secid, su_secid, init_secid;
+	u32 secid, su_secid;
 	const char *su_secctx = "u:r:su:s0";
-	const char *init_secctx = "u:r:init:s0";
+	char *buf, *pathname;
 	const char *blocklist[] = {"/system", "/system_ext", "/product", "/vendor", "/odm", "/oem"};
 	int len = ARRAY_SIZE(blocklist);
 	bool ret = false;
 
-	/* "adb remount" is allowed */
-	if (flags & MS_REMOUNT)
+	/* These commands would mount with "bind" flag */
+	if (!(flags & MS_BIND))
 		return ret;
 
 	buf = (char *)__get_free_page(GFP_KERNEL);
@@ -3150,12 +3145,11 @@ static bool mount_block_check(unsigned long flags, struct path *path)
 		goto out_putname;
 
 	security_secctx_to_secid(su_secctx, strlen(su_secctx), &su_secid);
-	security_secctx_to_secid(init_secctx, strlen(init_secctx), &init_secid);
 	security_task_getsecid(current, &secid);
 
-	/* "su" should be blocked, the secid of su equals init at init first stage*/
-	if ((secid != init_secid) && (secid == su_secid)) {
-		pr_warn("Mount on %s is not allowed with %d\n", pathname, secid);
+	/* "su" should be blocked */
+	if (secid == su_secid) {
+		pr_warn("Mount on %s is not allowed\n", pathname);
 		ret = true;
 	}
 

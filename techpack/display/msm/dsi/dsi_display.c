@@ -1526,47 +1526,47 @@ static void _dsi_display_continuous_clk_ctrl(struct dsi_display *display,
 }
 
 int dsi_display_cmd_receive(void *display, const char *cmd_buf,
-                u32 cmd_buf_len,  u8 *recv_buf, u32 recv_buf_len)
+		u32 cmd_buf_len,  u8 *recv_buf, u32 recv_buf_len)
 {
-        struct dsi_display *dsi_display = display;
-        struct dsi_cmd_desc cmd = {};
-        u8 cmd_payload[MAX_CMD_PAYLOAD_SIZE] = {0};
-        bool state = false;
-        int rc = -1;
+	struct dsi_display *dsi_display = display;
+	struct dsi_cmd_desc cmd = {};
+	u8 cmd_payload[MAX_CMD_PAYLOAD_SIZE] = {0};
+	bool state = false;
+	int rc = -1;
 
-        if (!dsi_display || !cmd_buf || !recv_buf) {
-                DSI_ERR("[DSI] invalid params\n");
-                return -EINVAL;
-        }
+	if (!dsi_display || !cmd_buf || !recv_buf) {
+		DSI_ERR("[DSI] invalid params\n");
+		return -EINVAL;
+	}
 
 	SDE_EVT32(cmd_buf_len, recv_buf_len);
 
-        rc = dsi_display_cmd_prepare(cmd_buf, cmd_buf_len,
-                        &cmd, cmd_payload, MAX_CMD_PAYLOAD_SIZE);
-        if (rc) {
-                DSI_ERR("[DSI] command prepare failed, rc = %d\n", rc);
-                return rc;
-        }
+	rc = dsi_display_cmd_prepare(cmd_buf, cmd_buf_len,
+			&cmd, cmd_payload, MAX_CMD_PAYLOAD_SIZE);
+	if (rc) {
+		DSI_ERR("[DSI] command prepare failed, rc = %d\n", rc);
+		return rc;
+	}
 
-        cmd.msg.rx_buf = recv_buf;
-        cmd.msg.rx_len = recv_buf_len;
+	cmd.msg.rx_buf = recv_buf;
+	cmd.msg.rx_len = recv_buf_len;
 
-        mutex_lock(&dsi_display->display_lock);
-        rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
-        if (rc || !state) {
-                DSI_ERR("[DSI] Invalid host state = %d rc = %d\n",
-                        state, rc);
-                rc = -EPERM;
-                goto end;
-        }
+	mutex_lock(&dsi_display->display_lock);
+	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
+	if (rc || !state) {
+		DSI_ERR("[DSI] Invalid host state = %d rc = %d\n",
+			state, rc);
+		rc = -EPERM;
+		goto end;
+	}
 
-        rc = dsi_display_cmd_rx(dsi_display, &cmd);
-        if (rc <= 0)
-                DSI_ERR("[DSI] Display command receive failed, rc=%d\n", rc);
+	rc = dsi_display_cmd_rx(dsi_display, &cmd);
+	if (rc <= 0)
+		DSI_ERR("[DSI] Display command receive failed, rc=%d\n", rc);
 
 end:
-        mutex_unlock(&dsi_display->display_lock);
-        return rc;
+	mutex_unlock(&dsi_display->display_lock);
+	return rc;
 }
 
 int dsi_display_motUtil_transfer(void *display, const char *cmd_buf,

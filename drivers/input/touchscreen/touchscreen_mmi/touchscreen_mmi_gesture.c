@@ -238,8 +238,13 @@ static int ts_mmi_gesture_handler(struct gesture_event_data *gev)
 {
 	int key_code;
 	struct ts_mmi_dev *touch_cdev = sensor_pdata->touch_cdev;
+	struct ts_mmi_dev_pdata *ppdata = &touch_cdev->pdata;
 	unsigned char mode_type = touch_cdev->gesture_mode_type;
 
+	if (ppdata->resolution_boost) {
+		gev->evdata.x /= ppdata->resolution_boost;
+		gev->evdata.y /= ppdata->resolution_boost;
+	}
 	switch (gev->evcode) {
 	case 1:
 		if (!(mode_type & TS_MMI_GESTURE_SINGLE))
@@ -247,7 +252,9 @@ static int ts_mmi_gesture_handler(struct gesture_event_data *gev)
 
 		ts_mmi_single_tap_handler(touch_cdev);
 		key_code = BTN_TRIGGER_HAPPY3;
-		pr_info("%s: single tap\n", __func__);
+		input_report_abs(sensor_pdata->input_sensor_dev, ABS_X, gev->evdata.x);
+		input_report_abs(sensor_pdata->input_sensor_dev, ABS_Y, gev->evdata.y);
+		pr_info("%s: single tap; x=%d, y=%d\n", __func__, gev->evdata.x, gev->evdata.y);
 			break;
 	case 2:
 		if (!(mode_type & TS_MMI_GESTURE_ZERO))
@@ -277,7 +284,9 @@ static int ts_mmi_gesture_handler(struct gesture_event_data *gev)
 			return 1;
 
 		key_code = BTN_TRIGGER_HAPPY6;
-		pr_info("%s: double tap\n", __func__);
+		input_report_abs(sensor_pdata->input_sensor_dev, ABS_X, gev->evdata.x);
+		input_report_abs(sensor_pdata->input_sensor_dev, ABS_Y, gev->evdata.y);
+		pr_info("%s: double tap; x=%d, y=%d\n", __func__, gev->evdata.x, gev->evdata.y);
 		touch_cdev->double_tap_pressed = true;
 		sysfs_notify(&DEV_MMI->kobj, NULL, "double_tap_pressed");
 		break;

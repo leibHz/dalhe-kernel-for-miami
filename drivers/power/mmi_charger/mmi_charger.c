@@ -40,7 +40,7 @@
 #define BATT_PAIR_ID_MASK ((1 << BATT_PAIR_ID_BITS) - 1)
 
 #define HEARTBEAT_DELAY_MS 60000
-#define HEARTBEAT_FACTORY_MS 1000
+#define HEARTBEAT_FACTORY_MS 5000
 #define HEARTBEAT_DISCHARGE_MS 100000
 #define HEARTBEAT_WAKEUP_INTRVAL_NS 70000000000
 
@@ -71,6 +71,7 @@ enum {
 	NOTIFY_EVENT_TYPE_LPD_PRESENT,
 	NOTIFY_EVENT_TYPE_VBUS_PRESENT,
 	NOTIFY_EVENT_TYPE_POWER_WATT,
+	NOTIFY_EVENT_TYPE_CHG_REAL_TYPE,
 };
 
 static char *charge_rate[] = {
@@ -219,6 +220,7 @@ struct mmi_charger_chip {
 	int			charge_full_design;
 	int			init_cycles;
 	int			max_charger_rate;
+	int			real_charger_type;
 	bool			vbus_present;
 	bool			lpd_present;
 	int			power_watt;
@@ -240,12 +242,14 @@ struct mmi_charger_chip {
         bool                    enable_factory_poweroff;
 	bool			factory_syspoweroff_wait;
 	bool			start_factory_kill_disabled;
+	int			upper_limit_en_mv;
 	int			upper_limit_capacity;
 	int			lower_limit_capacity;
 
 	struct wakeup_source	*mmi_hb_wake_source;
 	struct alarm		heartbeat_alarm;
 	int			heartbeat_interval;
+	int			heartbeat_factory_interval;
 	struct notifier_block	mmi_reboot;
 	struct notifier_block	mmi_psy_notifier;
 	struct delayed_work	heartbeat_work;
@@ -361,6 +365,8 @@ static ssize_t state_sync_store(struct device *dev,
 					NOTIFY_EVENT_TYPE_VBUS_PRESENT);
 		mmi_notify_charger_event(this_chip,
 					NOTIFY_EVENT_TYPE_POWER_WATT);
+		mmi_notify_charger_event(this_chip,
+					NOTIFY_EVENT_TYPE_CHG_REAL_TYPE);
 		mutex_unlock(&this_chip->charger_lock);
 		cancel_delayed_work(&this_chip->heartbeat_work);
 		schedule_delayed_work(&this_chip->heartbeat_work,
@@ -1502,7 +1508,8 @@ static void mmi_update_charger_status(struct mmi_charger_chip *chip,
 	if (chip->enable_charging_limit && chip->factory_version) {
 		charging_limit_modes = status->charging_limit_modes;
 		if ((charging_limit_modes != CHARGING_LIMIT_RUN)
-		    && (batt_info->batt_soc >= chip->upper_limit_capacity))
+		    && (batt_info->batt_soc >= chip->upper_limit_capacity)
+		    && (batt_info->batt_mv >= chip->upper_limit_en_mv))
 			charging_limit_modes = CHARGING_LIMIT_RUN;
 		else if ((charging_limit_modes != CHARGING_LIMIT_OFF)
 			   && (batt_info->batt_soc <= chip->lower_limit_capacity))
@@ -1776,6 +1783,11 @@ static void mmi_notify_charger_event(struct mmi_charger_chip *chip, int type)
 				"POWER_SUPPLY_POWER_WATT=%d",
 				chip->power_watt / 1000);
 			break;
+		case NOTIFY_EVENT_TYPE_CHG_REAL_TYPE:
+			scnprintf(event_string, CHG_SHOW_MAX_SIZE,
+				"POWER_SUPPLY_CHARGE_REAL_TYPE=%d",
+				chip->real_charger_type);
+			break;
 		default:
 			mmi_err(chip, "Invalid notify event type %d\n", type);
 			kfree(event_string);
@@ -1989,6 +2001,8 @@ static void mmi_update_battery_status(struct mmi_charger_chip *chip)
 	int batt_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 	int charger_rate = MMI_POWER_SUPPLY_CHARGE_RATE_NONE;
 	int max_charger_rate = MMI_POWER_SUPPLY_CHARGE_RATE_NONE;
+	int charger_type = 0;
+	int real_charger_type = 0;
 	struct mmi_charger *charger = NULL;
 	struct mmi_battery_pack *battery = NULL;
 	struct mmi_battery_info *batt_info = NULL;
@@ -2027,6 +2041,11 @@ static void mmi_update_battery_status(struct mmi_charger_chip *chip)
 		if (charger->chg_info.chrg_pmax_mw > power_watt)
 			power_watt = charger->chg_info.chrg_pmax_mw;
 
+		/* update charger type */
+		charger_type = charger->chg_info.chrg_type;
+		if (charger_type != 0xFF && real_charger_type < charger_type)
+			real_charger_type = charger_type;
+
 		/* update charging status */
 		if (batt_info->batt_status == POWER_SUPPLY_STATUS_FULL ||
 		    battery->status == POWER_SUPPLY_STATUS_FULL ||
@@ -2056,6 +2075,7 @@ static void mmi_update_battery_status(struct mmi_charger_chip *chip)
 			battery->cycles,
 			charge_rate[battery->charger_rate]);
 		}
+
 		/* update vbus and liquid present detection status */
 		if (!vbus_present && charger->chg_info.vbus_present)
 			vbus_present = true;
@@ -2125,6 +2145,13 @@ static void mmi_update_battery_status(struct mmi_charger_chip *chip)
 		chip->power_watt = power_watt;
 		mmi_notify_charger_event(chip, NOTIFY_EVENT_TYPE_POWER_WATT);
 		mmi_info(chip, "charger power is %d mW\n", power_watt);
+	}
+
+	if ((chip->real_charger_type) != real_charger_type) {
+		mmi_changed = true;
+		chip->real_charger_type = real_charger_type;
+		mmi_notify_charger_event(chip, NOTIFY_EVENT_TYPE_CHG_REAL_TYPE);
+		mmi_info(chip, "charger real type is %d\n", real_charger_type);
 	}
 
 	list_for_each_entry(battery, &chip->battery_list, list) {
@@ -2254,7 +2281,7 @@ static void mmi_charger_heartbeat_work(struct work_struct *work)
 	chip->suspended = 0;
 
 	if (chip->factory_mode)
-		hb_resch_time = HEARTBEAT_FACTORY_MS;
+		hb_resch_time = chip->heartbeat_factory_interval;
 	else if (chip->max_charger_rate != MMI_POWER_SUPPLY_CHARGE_RATE_NONE
 		 && chip->combo_status != POWER_SUPPLY_STATUS_FULL)
 		hb_resch_time = chip->heartbeat_interval;
@@ -2627,10 +2654,12 @@ static int mmi_charger_reboot(struct notifier_block *nb,
 	if (!chip->factory_mode)
 		return NOTIFY_DONE;
 
+	pr_info("Reboot notifier call mmi charger reboot!\n");
 	switch (event) {
 	case SYS_POWER_OFF:
 		factory_kill_disable = true;
 		chip->force_charger_disabled = true;
+		cancel_delayed_work(&chip->heartbeat_work);
 		schedule_delayed_work(&chip->heartbeat_work, msecs_to_jiffies(0));
 		while (chip->max_charger_rate != MMI_POWER_SUPPLY_CHARGE_RATE_NONE &&
 			(shutdown_triggered || chip->factory_syspoweroff_wait) && !chip->empty_vbat_shutdown_triggered) {
@@ -2788,6 +2817,11 @@ static int mmi_parse_dt(struct mmi_charger_chip *chip)
 	if (rc)
 		chip->factory_kill_debounce_ms = 0;
 
+	rc = of_property_read_u32(node, "mmi,upper-limit-en-voltage",
+				  &chip->upper_limit_en_mv);
+	if (rc)
+		chip->upper_limit_en_mv = 4000;
+
 	rc = of_property_read_u32(node, "mmi,upper-limit-capacity",
 				  &chip->upper_limit_capacity);
 	if (rc)
@@ -2802,6 +2836,11 @@ static int mmi_parse_dt(struct mmi_charger_chip *chip)
 				  &chip->heartbeat_interval);
 	if (rc)
 		chip->heartbeat_interval = HEARTBEAT_DELAY_MS;
+
+	rc = of_property_read_u32(node, "mmi,heartbeat-factory-interval",
+				  &chip->heartbeat_factory_interval);
+	if (rc)
+		chip->heartbeat_factory_interval = HEARTBEAT_FACTORY_MS;
 
 	rc = of_property_read_u32(node, "mmi,dcp-power-max",
 				  &chip->dcp_pmax);
@@ -3049,6 +3088,7 @@ static void mmi_charger_shutdown(struct platform_device *pdev)
 {
 	struct mmi_charger_chip *chip = platform_get_drvdata(pdev);
 
+	cancel_delayed_work(&chip->heartbeat_work);
 	mmi_info(chip, "MMI charger shutdown\n");
 
 	return;

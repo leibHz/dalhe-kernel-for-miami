@@ -526,6 +526,10 @@ struct smb_mmi_charger {
 	bool			enable_dcp_ffc;
 
 	bool			enable_fcc_large_qg_iterm;
+
+	/*Battery info*/
+	unsigned long		manufacturing_date;
+	unsigned long		first_usage_date;
 };
 
 #define CHGR_FAST_CHARGE_CURRENT_CFG_REG	(CHGR_BASE + 0x61)
@@ -736,6 +740,7 @@ enum smb_mmi_ext_iio_channels {
 	SMB5_QG_CHARGE_FULL,
 	SMB5_QG_CHARGE_FULL_DESIGN,
 	SMB5_QG_BATT_FULL_CURRENT,
+	SMB5_QG_SOH,
 };
 
 static const char * const smb_mmi_ext_iio_chan_name[] = {
@@ -759,6 +764,7 @@ static const char * const smb_mmi_ext_iio_chan_name[] = {
 	[SMB5_QG_CHARGE_FULL] = "charge_full",
 	[SMB5_QG_CHARGE_FULL_DESIGN] = "charge_full_design",
 	[SMB5_QG_BATT_FULL_CURRENT] = "batt_full_current",
+	[SMB5_QG_SOH] = "soh",
 };
 
 bool is_chan_valid(struct smb_mmi_charger *chip,
@@ -3712,7 +3718,11 @@ static void mmi_basic_charge_sm(struct smb_mmi_charger *chip,
 				prm->pres_chrg_step = STEP_FULL;
 		}
 	} else if (prm->pres_chrg_step == STEP_FULL) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,1,25)
+		if (stat->batt_soc <= 95) {
+#else
 		if (stat->batt_mv < (max_fv_mv - HYST_STEP_MV * 2)) {
+#endif
 			prm->chrg_taper_cnt = 0;
 			prm->pres_chrg_step = STEP_NORM;
 		}
@@ -4226,29 +4236,40 @@ static void mmi_heartbeat_work(struct work_struct *work)
 		}
 
 	} else if (!chip->factory_mode) {
-		cap_err = 0;
-		rc = smb_mmi_read_iio_chan(chip,
-					       SMB5_QG_CHARGE_FULL,
-					       &pval.intval);
+		//Get soh from qcom gauge,  or soh=age=fcc/fcc_designed
+		rc = smb_mmi_read_iio_chan(chip, SMB5_QG_SOH, &pval.intval);
 		if (rc < 0) {
-			mmi_err(chip, "Couldn't get charge full\n");
-			cap_err = rc;
-		} else
-			main_cap = pval.intval;
+			mmi_err(chip, "Couldn't get qcom battery soh\n");
+			//chip->age = 100;
+			cap_err = 0;
+			rc = smb_mmi_read_iio_chan(chip,
+						       SMB5_QG_CHARGE_FULL,
+						       &pval.intval);
+			if (rc < 0) {
+				mmi_err(chip, "Couldn't get charge full\n");
+				cap_err = rc;
+			} else
+				main_cap = pval.intval;
 
-		rc = smb_mmi_read_iio_chan(chip,
-					SMB5_QG_CHARGE_FULL_DESIGN,
-					&pval.intval);
-		if (rc < 0) {
-			mmi_err(chip, "Couldn't get charge full design\n");
-			cap_err = rc;
-		} else
-			main_cap_full = pval.intval;
+			rc = smb_mmi_read_iio_chan(chip,
+						SMB5_QG_CHARGE_FULL_DESIGN,
+						&pval.intval);
+			if (rc < 0) {
+				mmi_err(chip, "Couldn't get charge full design\n");
+				cap_err = rc;
+			} else
+				main_cap_full = pval.intval;
 
-		if (cap_err == 0)
-			chip->age = ((main_cap / 10) / (main_cap_full / 1000));
+			if (cap_err == 0)
+				chip->age = ((main_cap / 10) / (main_cap_full / 1000));
 
-		mmi_dbg(chip, "Age %d\n", chip->age);
+			mmi_dbg(chip, "mmi_age %d\n", chip->age);
+		} else {
+			chip->age = pval.intval;
+			mmi_dbg(chip, "get qg soh=%d\n", chip->age);
+			if (chip->cycles < 50)
+				chip->age = 100;
+		}
 
 		/* Fall here for Basic Step and Thermal Charging */
 		mmi_basic_charge_sm(chip, &chg_stat);
@@ -4343,7 +4364,6 @@ sch_hb:
 		envp[0] = chrg_rate_string;
 		envp[1] = NULL;
 	}
-
 	if (chip->batt_psy) {
 		smb_mmi_power_supply_changed(chip->batt_psy, envp);
 	} else if (chip->qcom_psy) {
@@ -4503,7 +4523,13 @@ static int batt_get_prop(struct power_supply *psy,
 			val->intval = chip->last_reported_soc;
 		break;
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
-		val->intval = chip->cycles / 100;
+		if (chip->max_main_psy && chip->max_flip_psy)
+			val->intval = chip->cycles / 100;
+		else {
+			rc = power_supply_get_property(chip->qcom_psy, psp, val);
+			if (rc >= 0)
+				chip->cycles = val->intval;
+		}
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		if (chip->max_main_psy && chip->max_flip_psy)
@@ -4568,7 +4594,13 @@ static int batt_set_prop(struct power_supply *psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
-		chip->cycles += val->intval * 100;
+		if (chip->max_main_psy && chip->max_flip_psy) {
+			chip->cycles += val->intval * 100;
+		} else {
+			rc = power_supply_set_property(chip->qcom_psy, prop, val);
+			if (rc < 0)
+				mmi_err(chip, "set cycle_count failed, rc=%d\n", rc);
+		}
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		if (val->intval < 0) {
@@ -4957,9 +4989,100 @@ static ssize_t age_show(struct device *dev,
 }
 static DEVICE_ATTR(age, S_IRUGO, age_show, NULL);
 
+static ssize_t state_of_health_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	if (!this_chip) {
+		pr_err("mmi_charger: chip is invalid\n");
+		return -ENODEV;
+	}
+
+	return scnprintf(buf, CHG_SHOW_MAX_SIZE, "%d\n", this_chip->age);
+}
+
+static DEVICE_ATTR(state_of_health, S_IRUGO, state_of_health_show, NULL);
+
+static ssize_t first_usage_date_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	if (!this_chip) {
+		pr_err("mmi_charger: chip is invalid\n");
+		return -ENODEV;
+	}
+
+	return scnprintf(buf, CHG_SHOW_MAX_SIZE, "%lu\n", this_chip->first_usage_date);
+}
+
+static ssize_t first_usage_date_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long first_usage_date;
+
+	if (!this_chip) {
+		pr_err("mmi_charger: chip is invalid\n");
+		return -ENODEV;
+	}
+
+	r = kstrtoul(buf, 0, &first_usage_date);
+	if (r) {
+		mmi_err(this_chip, "Invalid first_usage_date value = %lu\n", first_usage_date);
+		return -EINVAL;
+	}
+
+	this_chip->first_usage_date = first_usage_date;
+
+	return r ? r : count;
+}
+
+static DEVICE_ATTR(first_usage_date, 0644, first_usage_date_show, first_usage_date_store);
+
+static ssize_t manufacturing_date_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	if (!this_chip) {
+		pr_err("mmi_charger: chip is invalid\n");
+		return -ENODEV;
+	}
+
+	return scnprintf(buf, CHG_SHOW_MAX_SIZE, "%lu\n", this_chip->manufacturing_date);
+}
+
+static ssize_t manufacturing_date_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned long r;
+	unsigned long manufacturing_date;
+
+	if (!this_chip) {
+		pr_err("mmi_charger: chip is invalid\n");
+		return -ENODEV;
+	}
+
+	r = kstrtoul(buf, 0, &manufacturing_date);
+	if (r) {
+		mmi_err(this_chip, "Invalid manufacturing_date value = %lu\n", manufacturing_date);
+		return -EINVAL;
+	}
+
+	this_chip->manufacturing_date = manufacturing_date;
+
+	return r ? r : count;
+}
+
+static DEVICE_ATTR(manufacturing_date, 0644, manufacturing_date_show, manufacturing_date_store);
+
 static struct attribute * mmi_g[] = {
 	&dev_attr_charge_rate.attr,
 	&dev_attr_age.attr,
+	&dev_attr_state_of_health.attr,
+	&dev_attr_manufacturing_date.attr,
+	&dev_attr_first_usage_date.attr,
 	NULL,
 };
 

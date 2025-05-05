@@ -428,9 +428,7 @@ struct goodix_ts_event {
 	u8 gesture_report_info;
 	struct goodix_touch_data touch_data;
 	struct goodix_pen_data pen_data;
-#ifdef CONFIG_GTP_FOD
 	u8 gesture_data[GOODIX_GESTURE_DATA_LEN];
-#endif
 };
 
 enum goodix_ic_bus_type {
@@ -602,6 +600,11 @@ struct goodix_ts_core {
 	struct notifier_block pen_notif;
 #endif
 };
+
+#ifdef GTP_PEN_NOTIFIER
+#define GTP_FINGER_MODE	0
+#define GTP_PEN_MODE		1
+#endif
 
 /* external module structures */
 enum goodix_ext_priority {

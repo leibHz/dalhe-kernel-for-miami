@@ -36,6 +36,7 @@
 		      <&pm7250b_qg PSY_IIO_CYCLE_COUNT>,
 		      <&pm7250b_qg PSY_IIO_CHARGE_FULL_DESIGN>,
 		      <&pm7250b_qg PSY_IIO_TIME_TO_FULL_NOW>,
+		      <&pm7250b_qg PSY_IIO_SOH>,
                       <&bq25960_standalone PSY_IIO_MMI_CP_INPUT_VOLTAGE_NOW>;
 	io-channel-names = "usb_in_voltage",
 			   "usb_in_current",
@@ -61,6 +62,7 @@
 			   "cycle_count",
 			   "charge_full_design",
 			   "time_to_full_now",
+			   "soh",
 			   "cp_input_voltage_now";
 	qcom,fcc-max-ua = <4000000>;
 	qcom,fv-max-uv = <4520000>;

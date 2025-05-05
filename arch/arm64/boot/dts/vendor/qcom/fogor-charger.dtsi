@@ -37,7 +37,8 @@
 		      <&pm7250b_qg PSY_IIO_CHARGE_COUNTER>,
 		      <&pm7250b_qg PSY_IIO_CYCLE_COUNT>,
 		      <&pm7250b_qg PSY_IIO_CHARGE_FULL_DESIGN>,
-		      <&pm7250b_qg PSY_IIO_TIME_TO_FULL_NOW>;
+		      <&pm7250b_qg PSY_IIO_TIME_TO_FULL_NOW>,
+		      <&pm7250b_qg PSY_IIO_SOH>;
 	io-channel-names = "usb_in_voltage",
 			   "usb_in_current",
 			   "chg_temp",
@@ -61,7 +62,8 @@
 			   "charge_counter",
 			   "cycle_count",
 			   "charge_full_design",
-			   "time_to_full_now";
+			   "time_to_full_now",
+			   "soh";
 	qcom,fcc-max-ua = <4000000>;
 	qcom,fv-max-uv = <4520000>;
 	qcom,dcp-curr-max = <2200000>;

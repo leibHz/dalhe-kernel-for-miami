@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../../PMkernel2/kernel/kernel"
+		},
+		{
+			"path": "../../../../../../../PMkernel2/kernel/clangPM"
+		},
+		{
+			"path": "../../../../.."
+		},
+		{
+			"path": "../../../../../../ClangDA"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}
